@@ -145,7 +145,7 @@ class PosRepository private constructor(
                 }?.filter { order ->
                     if (dateString.isBlank()) true
                     else {
-                        val timestamp = order.createdAt
+                        val timestamp = order.closedAt ?: order.createdAt
                         if (timestamp != null) {
                             val istDate = Instant.ofEpochSecond(timestamp.seconds)
                                 .atZone(ZoneId.of("Asia/Kolkata"))
@@ -157,7 +157,7 @@ class PosRepository private constructor(
                             todayIST == dateString
                         }
                     }
-                }?.sortedByDescending { it.createdAt?.seconds ?: Long.MAX_VALUE } ?: emptyList()
+                }?.sortedByDescending { (it.closedAt ?: it.createdAt)?.seconds ?: Long.MAX_VALUE } ?: emptyList()
                 trySend(orders)
             }
         awaitClose { listener.remove() }
@@ -389,6 +389,13 @@ class PosRepository private constructor(
         val orderDoc = orderRef.get().await()
         val order = orderDoc.toObject(PosOrder::class.java) ?: return
 
+        if (order.status == "PAID") {
+            throw IllegalStateException("Order '${order.id}' is already settled.")
+        }
+        if (order.status == "CANCELLED") {
+            throw IllegalStateException("Cannot settle a cancelled order.")
+        }
+
         val batch = db.batch()
 
         val orderUpdates = mutableMapOf<String, Any>(
@@ -512,4 +519,80 @@ class PosRepository private constructor(
 
         batch.commit().await()
     }
+
+    // ------------------------------------------------------------------
+    // Admin & Management Operations
+    // ------------------------------------------------------------------
+
+    suspend fun addMenuItem(item: MenuItem): String {
+        val docRef = if (item.id.isNotBlank()) {
+            db.collection("menu_items").document(item.id)
+        } else {
+            db.collection("menu_items").document()
+        }
+        val newItem = item.copy(id = docRef.id)
+        docRef.set(newItem).await()
+        return docRef.id
+    }
+
+    suspend fun updateMenuItem(item: MenuItem) {
+        require(item.id.isNotBlank()) { "Menu item ID cannot be blank for update" }
+        val docRef = db.collection("menu_items").document(item.id)
+        docRef.set(item, SetOptions.merge()).await()
+    }
+
+    suspend fun updateMenuItemStock(itemId: String, inStock: Boolean) {
+        require(itemId.isNotBlank()) { "Menu item ID cannot be blank" }
+        val docRef = db.collection("menu_items").document(itemId)
+        docRef.update("inStock", inStock).await()
+    }
+
+    suspend fun addTable(table: TableModel): String {
+        val docRef = if (table.id.isNotBlank()) {
+            db.collection("tables").document(table.id)
+        } else {
+            db.collection("tables").document()
+        }
+        val newTable = table.copy(
+            id = docRef.id,
+            status = "AVAILABLE",
+            activeOrderId = "",
+            activeTotalPaise = 0L,
+            openedAt = null
+        )
+        docRef.set(newTable).await()
+        return docRef.id
+    }
+
+    suspend fun updateTable(table: TableModel) {
+        require(table.id.isNotBlank()) { "Table ID cannot be blank for update" }
+        val docRef = db.collection("tables").document(table.id)
+        val updates = mapOf(
+            "label" to table.label,
+            "zone" to table.zone,
+            "capacity" to table.capacity
+        )
+        docRef.update(updates).await()
+    }
+
+    suspend fun deleteTable(tableId: String) {
+        require(tableId.isNotBlank()) { "Table ID cannot be blank for deletion" }
+        val docRef = db.collection("tables").document(tableId)
+        val snapshot = docRef.get().await()
+        val table = snapshot.toObject(TableModel::class.java)
+
+        if (table != null) {
+            if (table.status != "AVAILABLE" || table.activeOrderId.isNotBlank()) {
+                throw IllegalStateException("Cannot delete table '${table.label}' while it is OCCUPIED, BILLED, or has an active order.")
+            }
+        }
+        docRef.delete().await()
+    }
+
+    suspend fun updateOutletConfig(config: OutletConfig) {
+        val docRef = db.collection("outlet_config").document("default")
+        val updated = config.copy(id = "default")
+        docRef.set(updated, SetOptions.merge()).await()
+    }
 }
+
