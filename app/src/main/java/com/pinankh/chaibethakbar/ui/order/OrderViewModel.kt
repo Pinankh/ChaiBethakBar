@@ -34,6 +34,9 @@ class OrderViewModel(application: Application) : AndroidViewModel(application) {
     val menuItems: StateFlow<List<MenuItem>> = repository.getMenuFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    val menuCategories: StateFlow<List<com.pinankh.chaibethakbar.model.Category>> = repository.observeMenuCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
     val outletConfig: StateFlow<OutletConfig?> = repository.getOutletConfigFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 

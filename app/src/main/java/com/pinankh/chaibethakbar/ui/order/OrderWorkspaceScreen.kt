@@ -50,6 +50,7 @@ fun OrderWorkspaceScreen(
 
     val activeOrder by viewModel.activeOrder.collectAsStateWithLifecycle()
     val menuItems by viewModel.menuItems.collectAsStateWithLifecycle()
+    val menuCategories by viewModel.menuCategories.collectAsStateWithLifecycle()
     val outletConfig by viewModel.outletConfig.collectAsStateWithLifecycle()
     val availableTables by viewModel.availableTables.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
@@ -61,6 +62,7 @@ fun OrderWorkspaceScreen(
     OrderWorkspaceScreen(
         activeOrder = activeOrder,
         menuItems = menuItems,
+        menuCategories = menuCategories,
         outletConfig = outletConfig,
         availableTables = availableTables,
         selectedCategory = selectedCategory,
@@ -99,6 +101,7 @@ fun OrderWorkspaceScreen(
 fun OrderWorkspaceScreen(
     activeOrder: PosOrder?,
     menuItems: List<MenuItem>,
+    menuCategories: List<com.pinankh.chaibethakbar.model.Category>,
     outletConfig: OutletConfig?,
     availableTables: List<TableModel>,
     selectedCategory: String,
@@ -136,8 +139,9 @@ fun OrderWorkspaceScreen(
     var showViewBillDialog by remember { mutableStateOf(false) }
     var showSettleBillDialog by remember { mutableStateOf(false) }
 
-    val categories = remember(menuItems) {
-        val baseCategories = listOf("All", "Chai", "Coffee", "Snacks", "Mocktails", "Combos")
+    val categories = remember(menuItems, menuCategories) {
+        val activeCategories = menuCategories.filter { it.isActive }.map { it.name }.distinct()
+        val baseCategories = listOf("All") + (activeCategories.ifEmpty { listOf("Chai", "Coffee", "Snacks", "Mocktails", "Combos") })
         val dynamicCategories = menuItems.map { it.category }.distinct().filter { it.isNotBlank() }
         (baseCategories + dynamicCategories).distinct()
     }
@@ -1350,6 +1354,7 @@ fun OrderWorkspaceScreenPreview() {
                 MenuItem("m2", "Ginger Tea", "Chai", 3000L, isVeg = true),
                 MenuItem("m3", "Cold Coffee", "Coffee", 9000L, isVeg = true)
             ),
+            menuCategories = emptyList(),
             outletConfig = OutletConfig(),
             availableTables = listOf(TableModel("t1", "Table 1", "Indoor", 4, "AVAILABLE")),
             selectedCategory = "All",
@@ -1361,7 +1366,7 @@ fun OrderWorkspaceScreenPreview() {
             onSelectCategory = {},
             onSearchQueryChange = {},
             onToggleVegOnly = {},
-            onAddItem = { _, _ -> },
+            onAddItem = { _: MenuItem, _: String? -> },
             onIncrementQty = {},
             onDecrementQty = {},
             onRemoveItem = {},

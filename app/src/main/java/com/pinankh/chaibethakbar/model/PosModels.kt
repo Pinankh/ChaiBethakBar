@@ -77,3 +77,52 @@ data class PosOrder(
     @ServerTimestamp val createdAt: Timestamp? = null,
     val closedAt: Timestamp? = null
 )
+
+data class Category(
+    @DocumentId val categoryId: String = "",
+    val name: String = "",
+    val description: String = "",
+    val categoryType: String = "MENU", // MENU or INVENTORY
+    val isActive: Boolean = true,
+    val sortOrder: Int = 0,
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    val updatedAt: Timestamp? = null
+)
+
+data class InventoryItem(
+    @DocumentId val inventoryItemId: String = "",
+    val name: String = "",
+    val description: String = "",
+    val categoryId: String = "",
+    val categoryName: String = "",
+    val itemType: String = "OTHER", // INGREDIENT, RESALE_PRODUCT, PACKAGING, CONSUMABLE, OTHER
+    val baseUnit: String = "",
+    val purchaseUnit: String = "",
+    val conversionFactor: Long = 1L,
+    val currentStockBaseUnits: Long = 0L,
+    val minimumStockBaseUnits: Long = 0L,
+    val openingStockBaseUnits: Long = 0L,
+    val defaultPurchaseRatePaise: Long = 0L,
+    val isActive: Boolean = true,
+    val notes: String = "",
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    val updatedAt: Timestamp? = null
+)
+
+data class Supplier(
+    @DocumentId val supplierId: String = "",
+    val name: String = "",
+    val contactPerson: String = "",
+    val phone: String = "",
+    val alternatePhone: String = "",
+    val email: String = "",
+    val address: String = "",
+    val city: String = "",
+    val state: String = "",
+    val pincode: String = "",
+    val gstin: String = "",
+    val notes: String = "",
+    val isActive: Boolean = true,
+    @ServerTimestamp val createdAt: Timestamp? = null,
+    val updatedAt: Timestamp? = null
+)

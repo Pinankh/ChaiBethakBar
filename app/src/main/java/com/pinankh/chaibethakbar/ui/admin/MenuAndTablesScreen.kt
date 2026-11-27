@@ -26,6 +26,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.pinankh.chaibethakbar.model.Category
 import com.pinankh.chaibethakbar.model.MenuItem
 import com.pinankh.chaibethakbar.model.TableModel
 import com.pinankh.chaibethakbar.ui.theme.*
@@ -58,6 +59,8 @@ fun MenuAndTablesScreen(
 ) {
     val menuItems by viewModel.menuItems.collectAsStateWithLifecycle()
     val tables by viewModel.tables.collectAsStateWithLifecycle()
+    val menuCategories by viewModel.menuCategories.collectAsStateWithLifecycle()
+    val inventoryCategories by viewModel.inventoryCategories.collectAsStateWithLifecycle()
     val searchQuery by viewModel.searchQuery.collectAsStateWithLifecycle()
     val selectedCategory by viewModel.selectedCategory.collectAsStateWithLifecycle()
     val isLoading by viewModel.isLoading.collectAsStateWithLifecycle()
@@ -67,6 +70,8 @@ fun MenuAndTablesScreen(
     MenuAndTablesScreenContent(
         menuItems = menuItems,
         tables = tables,
+        menuCategories = menuCategories,
+        inventoryCategories = inventoryCategories,
         searchQuery = searchQuery,
         selectedCategory = selectedCategory,
         isLoading = isLoading,
@@ -79,7 +84,11 @@ fun MenuAndTablesScreen(
         onSaveMenuItem = { item, isEdit -> viewModel.saveMenuItem(item, isEdit) },
         onSaveTable = { table, isEdit -> viewModel.saveTable(table, isEdit) },
         onDeleteTable = { table -> viewModel.deleteTable(table) },
-        onClearMessages = { viewModel.clearMessages() }
+        onClearMessages = { viewModel.clearMessages() },
+        onSaveCategory = { cat, isEdit -> viewModel.saveCategory(cat, isEdit) },
+        onDeleteCategory = { cat -> viewModel.deleteCategory(cat) },
+        onToggleCategoryActive = { id, active -> viewModel.toggleCategoryActive(id, active) },
+        onMigrateCategories = { viewModel.migrateCategories() }
     )
 }
 
@@ -88,6 +97,8 @@ fun MenuAndTablesScreen(
 fun MenuAndTablesScreenContent(
     menuItems: List<MenuItem>,
     tables: List<TableModel>,
+    menuCategories: List<Category>,
+    inventoryCategories: List<Category>,
     searchQuery: String,
     selectedCategory: String,
     isLoading: Boolean,
@@ -100,7 +111,11 @@ fun MenuAndTablesScreenContent(
     onSaveMenuItem: (MenuItem, Boolean) -> Unit,
     onSaveTable: (TableModel, Boolean) -> Unit,
     onDeleteTable: (TableModel) -> Unit,
-    onClearMessages: () -> Unit
+    onClearMessages: () -> Unit,
+    onSaveCategory: (Category, Boolean) -> Unit,
+    onDeleteCategory: (Category) -> Unit,
+    onToggleCategoryActive: (String, Boolean) -> Unit,
+    onMigrateCategories: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
 
@@ -173,6 +188,19 @@ fun MenuAndTablesScreenContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            Icon(Icons.Default.Category, contentDescription = null)
+                            Text("Category Manager (${menuCategories.size + inventoryCategories.size})", fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Icon(Icons.Default.TableBar, contentDescription = null)
                             Text("Table Manager (${tables.size})", fontWeight = FontWeight.SemiBold)
                         }
@@ -189,6 +217,7 @@ fun MenuAndTablesScreenContent(
                 when (selectedTab) {
                     0 -> MenuManagerTab(
                         menuItems = menuItems,
+                        menuCategories = menuCategories,
                         searchQuery = searchQuery,
                         selectedCategory = selectedCategory,
                         isLoading = isLoading,
@@ -197,7 +226,16 @@ fun MenuAndTablesScreenContent(
                         onToggleStock = onToggleStock,
                         onSaveMenuItem = onSaveMenuItem
                     )
-                    1 -> TableManagerTab(
+                    1 -> CategoryManagerTab(
+                        menuCategories = menuCategories,
+                        inventoryCategories = inventoryCategories,
+                        isLoading = isLoading,
+                        onSaveCategory = onSaveCategory,
+                        onDeleteCategory = onDeleteCategory,
+                        onToggleCategoryActive = onToggleCategoryActive,
+                        onMigrateCategories = onMigrateCategories
+                    )
+                    2 -> TableManagerTab(
                         tables = tables,
                         isLoading = isLoading,
                         onSaveTable = onSaveTable,
@@ -216,6 +254,7 @@ fun MenuAndTablesScreenContent(
 @Composable
 fun MenuManagerTab(
     menuItems: List<MenuItem>,
+    menuCategories: List<Category>,
     searchQuery: String,
     selectedCategory: String,
     isLoading: Boolean,
@@ -227,8 +266,9 @@ fun MenuManagerTab(
     var showItemDialog by remember { mutableStateOf(false) }
     var itemToEdit by remember { mutableStateOf<MenuItem?>(null) }
 
+    val activeCategories = menuCategories.filter { it.isActive }.map { it.name }.distinct()
     val defaultCategories = listOf("Chai", "Coffee", "Snacks", "Mocktails", "Combos")
-    val allCategories = listOf("All") + (defaultCategories + menuItems.map { it.category }).distinct().filter { it.isNotBlank() }
+    val allCategories = listOf("All") + (activeCategories.ifEmpty { defaultCategories } + menuItems.map { it.category }).distinct().filter { it.isNotBlank() }
 
     val filteredItems = menuItems.filter { item ->
         val matchesCategory = selectedCategory == "All" || item.category.equals(selectedCategory, ignoreCase = true)
@@ -647,7 +687,211 @@ fun MenuItemDialog(
 }
 
 // ------------------------------------------------------------------
-// TAB B — TABLE MANAGER
+// TAB B — CATEGORY MANAGER
+// ------------------------------------------------------------------
+
+@Composable
+fun CategoryManagerTab(
+    menuCategories: List<Category>,
+    inventoryCategories: List<Category>,
+    isLoading: Boolean,
+    onSaveCategory: (Category, Boolean) -> Unit,
+    onDeleteCategory: (Category) -> Unit,
+    onToggleCategoryActive: (String, Boolean) -> Unit,
+    onMigrateCategories: () -> Unit
+) {
+    var showDialog by remember { mutableStateOf(false) }
+    var categoryToEdit by remember { mutableStateOf<Category?>(null) }
+    var selectedTypeTab by remember { mutableIntStateOf(0) }
+    
+    val categories = if (selectedTypeTab == 0) menuCategories else inventoryCategories
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            TabRow(
+                selectedTabIndex = selectedTypeTab,
+                modifier = Modifier.width(300.dp),
+                containerColor = MaterialTheme.colorScheme.surface
+            ) {
+                Tab(selected = selectedTypeTab == 0, onClick = { selectedTypeTab = 0 }, text = { Text("MENU") })
+                Tab(selected = selectedTypeTab == 1, onClick = { selectedTypeTab = 1 }, text = { Text("INVENTORY") })
+            }
+            
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedButton(onClick = onMigrateCategories, enabled = !isLoading) {
+                    Text("Migrate Existing")
+                }
+                Button(
+                    onClick = {
+                        categoryToEdit = null
+                        showDialog = true
+                    },
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Add Category")
+                }
+            }
+        }
+
+        if (categories.isEmpty()) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No categories found", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(categories) { category ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(category.name, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium)
+                                if (category.description.isNotBlank()) {
+                                    Text(category.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Text("Sort Order: ${category.sortOrder}", style = MaterialTheme.typography.bodySmall)
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text("Active", style = MaterialTheme.typography.labelMedium)
+                                Switch(
+                                    checked = category.isActive,
+                                    onCheckedChange = { onToggleCategoryActive(category.categoryId, it) },
+                                    enabled = !isLoading
+                                )
+                                IconButton(
+                                    onClick = {
+                                        categoryToEdit = category
+                                        showDialog = true
+                                    },
+                                    enabled = !isLoading
+                                ) {
+                                    Icon(Icons.Default.Edit, contentDescription = "Edit")
+                                }
+                                IconButton(
+                                    onClick = { onDeleteCategory(category) },
+                                    enabled = !isLoading
+                                ) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showDialog) {
+        CategoryDialog(
+            category = categoryToEdit,
+            defaultType = if (selectedTypeTab == 0) "MENU" else "INVENTORY",
+            onDismiss = { showDialog = false },
+            onSave = { cat ->
+                onSaveCategory(cat, categoryToEdit != null)
+                showDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun CategoryDialog(
+    category: Category?,
+    defaultType: String,
+    onDismiss: () -> Unit,
+    onSave: (Category) -> Unit
+) {
+    var name by remember { mutableStateOf(category?.name ?: "") }
+    var description by remember { mutableStateOf(category?.description ?: "") }
+    var sortOrder by remember { mutableStateOf(category?.sortOrder?.toString() ?: "0") }
+    var validationError by remember { mutableStateOf<String?>(null) }
+    
+    val isEdit = category != null
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(if (isEdit) "Edit Category" else "Add Category") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (validationError != null) {
+                    Text(validationError!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it; validationError = null },
+                    label = { Text("Name") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("Description (Optional)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = sortOrder,
+                    onValueChange = { sortOrder = it },
+                    label = { Text("Sort Order") },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (name.isBlank()) {
+                        validationError = "Name cannot be empty"
+                        return@Button
+                    }
+                    val cat = Category(
+                        categoryId = category?.categoryId ?: "",
+                        name = name.trim(),
+                        description = description.trim(),
+                        categoryType = category?.categoryType ?: defaultType,
+                        isActive = category?.isActive ?: true,
+                        sortOrder = sortOrder.toIntOrNull() ?: 0,
+                        createdAt = category?.createdAt,
+                        updatedAt = category?.updatedAt
+                    )
+                    onSave(cat)
+                }
+            ) {
+                Text(if (isEdit) "Save Changes" else "Add Category")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
+        }
+    )
+}
+
+// ------------------------------------------------------------------
+// TAB C — TABLE MANAGER
 // ------------------------------------------------------------------
 
 @Composable
@@ -970,6 +1214,8 @@ fun MenuAndTablesScreenPreview() {
             tables = listOf(
                 TableModel(id = "t1", label = "Table 1", zone = "Indoor", capacity = 4, status = "AVAILABLE")
             ),
+            menuCategories = emptyList(),
+            inventoryCategories = emptyList(),
             searchQuery = "",
             selectedCategory = "All",
             isLoading = false,
@@ -982,7 +1228,11 @@ fun MenuAndTablesScreenPreview() {
             onSaveMenuItem = { _, _ -> },
             onSaveTable = { _, _ -> },
             onDeleteTable = {},
-            onClearMessages = {}
+            onClearMessages = {},
+            onSaveCategory = { _, _ -> },
+            onDeleteCategory = {},
+            onToggleCategoryActive = { _, _ -> },
+            onMigrateCategories = {}
         )
     }
 }

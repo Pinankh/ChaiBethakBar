@@ -17,6 +17,10 @@ import com.pinankh.chaibethakbar.ui.admin.OutletSettingsScreen
 import com.pinankh.chaibethakbar.ui.auth.OutletLoginScreen
 import com.pinankh.chaibethakbar.ui.home.HomeViewModel
 import com.pinankh.chaibethakbar.ui.home.PosHomeScreen
+import com.pinankh.chaibethakbar.ui.inventory.InventoryManagerScreen
+import com.pinankh.chaibethakbar.ui.inventory.InventoryViewModel
+import com.pinankh.chaibethakbar.ui.supplier.SupplierManagerScreen
+import com.pinankh.chaibethakbar.ui.supplier.SupplierViewModel
 import com.pinankh.chaibethakbar.ui.order.OrderWorkspaceScreen
 import com.pinankh.chaibethakbar.ui.reports.DailyReportsScreen
 import com.pinankh.chaibethakbar.ui.reports.ReportsViewModel
@@ -29,12 +33,16 @@ sealed class Screen {
     object Reports : Screen()
     object MenuTables : Screen()
     object Settings : Screen()
+    object InventoryManager : Screen()
+    object SupplierManager : Screen()
 }
 
 class MainActivity : ComponentActivity() {
     private val homeViewModel: HomeViewModel by viewModels()
     private val adminViewModel: AdminViewModel by viewModels()
     private val reportsViewModel: ReportsViewModel by viewModels()
+    private val inventoryViewModel: InventoryViewModel by viewModels()
+    private val supplierViewModel: SupplierViewModel by viewModels()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -73,6 +81,12 @@ class MainActivity : ComponentActivity() {
                                 },
                                 onNavigateSettings = {
                                     currentScreen = Screen.Settings
+                                },
+                                onNavigateInventory = {
+                                    currentScreen = Screen.InventoryManager
+                                },
+                                onNavigateSuppliers = {
+                                    currentScreen = Screen.SupplierManager
                                 }
                             )
                         }
@@ -101,6 +115,18 @@ class MainActivity : ComponentActivity() {
                                 onSignOutSuccess = {
                                     currentScreen = Screen.Login
                                 }
+                            )
+                        }
+                        is Screen.InventoryManager -> {
+                            InventoryManagerScreen(
+                                viewModel = inventoryViewModel,
+                                onBack = { currentScreen = Screen.Home }
+                            )
+                        }
+                        is Screen.SupplierManager -> {
+                            SupplierManagerScreen(
+                                viewModel = supplierViewModel,
+                                onNavigateBack = { currentScreen = Screen.Home }
                             )
                         }
                     }

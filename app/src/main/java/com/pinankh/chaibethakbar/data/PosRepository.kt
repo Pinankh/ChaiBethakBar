@@ -9,6 +9,10 @@ import com.pinankh.chaibethakbar.model.MenuItem
 import com.pinankh.chaibethakbar.model.OutletConfig
 import com.pinankh.chaibethakbar.model.PosOrder
 import com.pinankh.chaibethakbar.model.TableModel
+import com.pinankh.chaibethakbar.model.Category
+import com.pinankh.chaibethakbar.model.InventoryItem
+import com.pinankh.chaibethakbar.model.Supplier
+import com.google.firebase.firestore.Query
 import com.pinankh.chaibethakbar.util.TaxCalculator
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
@@ -593,6 +597,217 @@ class PosRepository private constructor(
         val docRef = db.collection("outlet_config").document("default")
         val updated = config.copy(id = "default")
         docRef.set(updated, SetOptions.merge()).await()
+    }
+
+    // --- Restored Phase 7 & 8 Methods ---
+
+    fun observeMenuCategories(): Flow<List<Category>> = callbackFlow {
+        val listener = db.collection("categories")
+            .whereEqualTo("categoryType", "MENU")
+            .orderBy("sortOrder")
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) { close(e); return@addSnapshotListener }
+                trySend(snapshot?.toObjects(Category::class.java) ?: emptyList())
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observeInventoryCategories(): Flow<List<Category>> = callbackFlow {
+        val listener = db.collection("categories")
+            .whereEqualTo("categoryType", "INVENTORY")
+            .orderBy("sortOrder")
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) { close(e); return@addSnapshotListener }
+                trySend(snapshot?.toObjects(Category::class.java) ?: emptyList())
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun addCategory(category: Category): String {
+        val docRef = db.collection("categories").document()
+        docRef.set(category.copy(categoryId = docRef.id)).await()
+        return docRef.id
+    }
+
+    suspend fun updateCategory(category: Category) {
+        db.collection("categories").document(category.categoryId).set(category).await()
+    }
+
+    suspend fun deleteCategorySafely(categoryId: String) {
+        db.collection("categories").document(categoryId).delete().await()
+    }
+
+    suspend fun setCategoryActive(categoryId: String, isActive: Boolean) {
+        db.collection("categories").document(categoryId).update("isActive", isActive).await()
+    }
+
+    suspend fun migrateExistingMenuCategories() {
+        // stub
+    }
+
+    fun observeInventoryItems(): Flow<List<InventoryItem>> = callbackFlow {
+        val listener = db.collection("inventory_items")
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) { close(e); return@addSnapshotListener }
+                trySend(snapshot?.toObjects(InventoryItem::class.java) ?: emptyList())
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun updateInventoryItem(item: InventoryItem) {
+        val docId = if (item.inventoryItemId.isEmpty()) db.collection("inventory_items").document().id else item.inventoryItemId
+        db.collection("inventory_items").document(docId).set(item.copy(inventoryItemId = docId)).await()
+    }
+
+    suspend fun addInventoryItem(item: InventoryItem): String {
+        val docRef = db.collection("inventory_items").document()
+        docRef.set(item.copy(inventoryItemId = docRef.id)).await()
+        return docRef.id
+    }
+
+    suspend fun setInventoryItemActive(itemId: String, isActive: Boolean) {
+        db.collection("inventory_items").document(itemId).update("isActive", isActive).await()
+    }
+
+    // --- Phase 9: Supplier Management ---
+
+    fun observeSuppliers(): Flow<List<Supplier>> = callbackFlow {
+        val listener = db.collection("suppliers")
+            .orderBy("name", Query.Direction.ASCENDING)
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) { close(e); return@addSnapshotListener }
+                if (snapshot != null) {
+                    trySend(snapshot.toObjects(Supplier::class.java))
+                } else {
+                    trySend(emptyList())
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observeActiveSuppliers(): Flow<List<Supplier>> = callbackFlow {
+        val listener = db.collection("suppliers")
+            .whereEqualTo("isActive", true)
+            .orderBy("name", Query.Direction.ASCENDING)
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) { close(e); return@addSnapshotListener }
+                if (snapshot != null) {
+                    trySend(snapshot.toObjects(Supplier::class.java))
+                } else {
+                    trySend(emptyList())
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    fun observeSupplier(supplierId: String): Flow<Supplier?> = callbackFlow {
+        val listener = db.collection("suppliers").document(supplierId)
+            .addSnapshotListener { snapshot, e ->
+                if (e != null) { close(e); return@addSnapshotListener }
+                if (snapshot != null && snapshot.exists()) {
+                    trySend(snapshot.toObject(Supplier::class.java))
+                } else {
+                    trySend(null)
+                }
+            }
+        awaitClose { listener.remove() }
+    }
+
+    suspend fun addSupplier(supplier: Supplier): String {
+        val nameTrimmed = supplier.name.trim()
+        if (nameTrimmed.isEmpty()) {
+            throw IllegalArgumentException("Supplier name is required")
+        }
+
+        val existing = db.collection("suppliers")
+            .whereEqualTo("isActive", true)
+            .get()
+            .await()
+            .toObjects(Supplier::class.java)
+        
+        if (existing.any { it.name.trim().equals(nameTrimmed, ignoreCase = true) }) {
+            throw IllegalArgumentException("An active supplier with this name already exists")
+        }
+
+        val docRef = db.collection("suppliers").document()
+        val cleanSupplier = supplier.copy(
+            supplierId = docRef.id,
+            name = nameTrimmed,
+            contactPerson = supplier.contactPerson.trim(),
+            phone = supplier.phone.trim(),
+            alternatePhone = supplier.alternatePhone.trim(),
+            email = supplier.email.trim(),
+            address = supplier.address.trim(),
+            city = supplier.city.trim(),
+            state = supplier.state.trim(),
+            pincode = supplier.pincode.trim(),
+            gstin = supplier.gstin.trim(),
+            notes = supplier.notes.trim(),
+            updatedAt = Timestamp.now()
+        )
+
+        docRef.set(cleanSupplier).await()
+        return docRef.id
+    }
+
+    suspend fun updateSupplier(supplier: Supplier) {
+        val nameTrimmed = supplier.name.trim()
+        if (nameTrimmed.isEmpty()) {
+            throw IllegalArgumentException("Supplier name is required")
+        }
+
+        if (supplier.isActive) {
+            val existing = db.collection("suppliers")
+                .whereEqualTo("isActive", true)
+                .get()
+                .await()
+                .toObjects(Supplier::class.java)
+
+            if (existing.any { it.supplierId != supplier.supplierId && it.name.trim().equals(nameTrimmed, ignoreCase = true) }) {
+                throw IllegalArgumentException("An active supplier with this name already exists")
+            }
+        }
+
+        val cleanSupplier = supplier.copy(
+            name = nameTrimmed,
+            contactPerson = supplier.contactPerson.trim(),
+            phone = supplier.phone.trim(),
+            alternatePhone = supplier.alternatePhone.trim(),
+            email = supplier.email.trim(),
+            address = supplier.address.trim(),
+            city = supplier.city.trim(),
+            state = supplier.state.trim(),
+            pincode = supplier.pincode.trim(),
+            gstin = supplier.gstin.trim(),
+            notes = supplier.notes.trim(),
+            updatedAt = Timestamp.now()
+        )
+        
+        db.collection("suppliers").document(supplier.supplierId).set(cleanSupplier).await()
+    }
+
+    suspend fun setSupplierActive(supplierId: String, isActive: Boolean) {
+        db.collection("suppliers").document(supplierId)
+            .update(
+                "isActive", isActive,
+                "updatedAt", Timestamp.now()
+            ).await()
+    }
+
+    suspend fun searchSuppliers(query: String): List<Supplier> {
+        val cleanQuery = query.trim().lowercase()
+        if (cleanQuery.isEmpty()) return emptyList()
+
+        return db.collection("suppliers")
+            .get()
+            .await()
+            .toObjects(Supplier::class.java)
+            .filter { supplier ->
+                supplier.name.lowercase().contains(cleanQuery) ||
+                supplier.contactPerson.lowercase().contains(cleanQuery) ||
+                supplier.phone.contains(cleanQuery) ||
+                supplier.gstin.lowercase().contains(cleanQuery)
+            }
     }
 }
 

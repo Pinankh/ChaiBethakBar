@@ -5,6 +5,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.firebase.auth.FirebaseAuth
 import com.pinankh.chaibethakbar.data.PosRepository
+import com.pinankh.chaibethakbar.model.Category
 import com.pinankh.chaibethakbar.model.MenuItem
 import com.pinankh.chaibethakbar.model.OutletConfig
 import com.pinankh.chaibethakbar.model.TableModel
@@ -22,6 +23,12 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
 
     val outletConfig: StateFlow<OutletConfig?> = repository.getOutletConfigFlow()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+    val menuCategories: StateFlow<List<Category>> = repository.observeMenuCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val inventoryCategories: StateFlow<List<Category>> = repository.observeInventoryCategories()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery.asStateFlow()
@@ -161,4 +168,75 @@ class AdminViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
+
+    // ------------------------------------------------------------------
+    // Category Operations
+    // ------------------------------------------------------------------
+
+    fun saveCategory(category: Category, isEdit: Boolean) {
+        if (_isLoading.value) return
+        _isLoading.value = true
+        _errorMessage.value = null
+
+        viewModelScope.launch {
+            try {
+                if (isEdit) {
+                    repository.updateCategory(category)
+                    _successMessage.value = "Category '${category.name}' updated."
+                } else {
+                    repository.addCategory(category)
+                    _successMessage.value = "Category '${category.name}' added."
+                }
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Failed to save category"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun deleteCategory(category: Category) {
+        if (_isLoading.value) return
+        _isLoading.value = true
+        _errorMessage.value = null
+
+        viewModelScope.launch {
+            try {
+                repository.deleteCategorySafely(category.categoryId)
+                _successMessage.value = "Category '${category.name}' deleted."
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Failed to delete category"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
+
+    fun toggleCategoryActive(categoryId: String, isActive: Boolean) {
+        viewModelScope.launch {
+            try {
+                repository.setCategoryActive(categoryId, isActive)
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Failed to update category status"
+            }
+        }
+    }
+    
+    fun migrateCategories() {
+        if (_isLoading.value) return
+        _isLoading.value = true
+        _errorMessage.value = null
+        
+        viewModelScope.launch {
+            try {
+                repository.migrateExistingMenuCategories()
+                _successMessage.value = "Categories migrated successfully."
+            } catch (e: Exception) {
+                _errorMessage.value = e.localizedMessage ?: "Failed to migrate categories"
+            } finally {
+                _isLoading.value = false
+            }
+        }
+    }
 }
+

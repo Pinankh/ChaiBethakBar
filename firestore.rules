@@ -5,14 +5,28 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Requires a custom claim { "owner": true } set via Firebase Admin SDK.
+    function isOwner() {
+      return isSignedIn() && request.auth.token.owner == true;
+    }
+
     match /outlet_config/{docId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isSignedIn(); // Or isOwner() if everything should be locked down. The prompt specifically asked about categories and inventory_items.
     }
     match /tables/{tableId} {
       allow read, write: if isSignedIn();
     }
     match /menu_items/{itemId} {
       allow read, write: if isSignedIn();
+    }
+    match /categories/{categoryId} {
+      allow read, write: if isOwner();
+    }
+    match /inventory_items/{itemId} {
+      allow read, write: if isOwner();
+    }
+    match /suppliers/{supplierId} {
+      allow read, write: if isOwner();
     }
     match /orders/{orderId} {
       allow read, create, update: if isSignedIn();

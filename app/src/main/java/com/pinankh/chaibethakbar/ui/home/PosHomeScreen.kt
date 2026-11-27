@@ -40,7 +40,9 @@ fun PosHomeScreen(
     onOpenOrder: (String) -> Unit,
     onNavigateReports: () -> Unit,
     onNavigateMenuTables: () -> Unit,
-    onNavigateSettings: () -> Unit
+    onNavigateSettings: () -> Unit,
+    onNavigateInventory: () -> Unit,
+    onNavigateSuppliers: () -> Unit
 ) {
     val outletConfig by viewModel.outletConfig.collectAsStateWithLifecycle()
     val tables by viewModel.tables.collectAsStateWithLifecycle()
@@ -64,6 +66,8 @@ fun PosHomeScreen(
         onNavigateReports = onNavigateReports,
         onNavigateMenuTables = onNavigateMenuTables,
         onNavigateSettings = onNavigateSettings,
+        onNavigateInventory = onNavigateInventory,
+        onNavigateSuppliers = onNavigateSuppliers,
         onClearError = { viewModel.clearError() },
         onSeedDemoOutlet = { viewModel.seedDemoOutlet() },
         onMarkParcelHandedOver = { viewModel.markParcelHandedOver(it) },
@@ -105,6 +109,8 @@ fun PosHomeScreen(
     onNavigateReports: () -> Unit,
     onNavigateMenuTables: () -> Unit,
     onNavigateSettings: () -> Unit,
+    onNavigateInventory: () -> Unit,
+    onNavigateSuppliers: () -> Unit,
     onClearError: () -> Unit,
     onSeedDemoOutlet: () -> Unit,
     onMarkParcelHandedOver: (String) -> Unit,
@@ -185,6 +191,12 @@ fun PosHomeScreen(
 
                     IconButton(onClick = onNavigateReports) {
                         Icon(Icons.Default.BarChart, contentDescription = "Reports")
+                    }
+                    IconButton(onClick = onNavigateInventory) {
+                        Icon(Icons.Default.Inventory, contentDescription = "Inventory")
+                    }
+                    IconButton(onClick = onNavigateSuppliers) {
+                        Icon(Icons.Default.LocalShipping, contentDescription = "Suppliers")
                     }
                     IconButton(onClick = onNavigateMenuTables) {
                         Icon(Icons.Default.RestaurantMenu, contentDescription = "Menu & Tables")
@@ -668,6 +680,8 @@ fun PosHomeScreenPreview() {
             onNavigateReports = {},
             onNavigateMenuTables = {},
             onNavigateSettings = {},
+            onNavigateInventory = {},
+            onNavigateSuppliers = {},
             onClearError = {},
             onSeedDemoOutlet = {},
             onMarkParcelHandedOver = {},
